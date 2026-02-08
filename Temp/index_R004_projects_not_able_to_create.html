@@ -677,13 +677,6 @@ async function init() {
   updateDbIndicator(connected);
   if (connected) {
     await loadProjects();
-  } else {
-    // Show empty state even if DB not connected
-    document.getElementById('projectsGrid').innerHTML = `
-      <div style="grid-column:1/-1;text-align:center;padding:40px;color:#95a5a6;">
-        <p style="font-size:18px;margin-bottom:10px;">⚠️ Database not connected</p>
-        <p>Run the <strong>mind_map_schema.sql</strong> in your Supabase SQL editor first.</p>
-      </div>`;
   }
   initGoogleAuth();
 }
@@ -694,24 +687,6 @@ async function testConnection() {
     return !error;
   } catch(e) { return false; }
 }
-
-// Fallback: double-click the title to toggle admin mode (for local testing)
-document.querySelector('.header h1').addEventListener('dblclick', () => {
-  isAdmin = !isAdmin;
-  googleUser = isAdmin ? { email: ADMIN_EMAIL, name: 'Admin' } : null;
-  if (isAdmin) {
-    document.getElementById('loginArea').style.display = 'none';
-    document.getElementById('userBadge').style.display = 'flex';
-    document.getElementById('userName').textContent = 'Admin (local)';
-  } else {
-    document.getElementById('loginArea').style.display = 'block';
-    document.getElementById('userBadge').style.display = 'none';
-  }
-  updateAdminUI();
-  if (currentPage === 'home') loadProjects();
-  else if (currentPage === 'assemblies') renderAssemblies();
-  showToast(isAdmin ? '🔓 Admin mode ON' : '🔒 Admin mode OFF', 'success');
-});
 
 function updateDbIndicator(ok) {
   const el = document.getElementById('dbIndicator');
@@ -744,9 +719,6 @@ function handleGoogleCallback(response) {
   document.getElementById('userName').textContent = payload.name;
   updateAdminUI();
   showToast(`Welcome ${payload.given_name}!`, 'success');
-  // Re-render current page so admin elements show up
-  if (currentPage === 'home') loadProjects();
-  else if (currentPage === 'assemblies') renderAssemblies();
 }
 
 function handleLogout() {
@@ -755,8 +727,6 @@ function handleLogout() {
   document.getElementById('loginArea').style.display = 'block';
   document.getElementById('userBadge').style.display = 'none';
   updateAdminUI();
-  if (currentPage === 'home') loadProjects();
-  else if (currentPage === 'assemblies') renderAssemblies();
 }
 
 function updateAdminUI() {
