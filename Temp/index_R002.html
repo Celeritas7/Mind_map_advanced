@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task Finder v2</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f4f8; min-height: 100vh; }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.2); flex-wrap: wrap; gap: 10px; }
+    .focus-banner { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 10px 25px; display: none; align-items: center; gap: 15px; flex-wrap: wrap; }
+    .focus-banner.active { display: flex; }
+    .focus-tags { display: flex; gap: 8px; flex-wrap: wrap; }
+    .focus-tag { background: rgba(255,255,255,0.25); padding: 5px 12px; border-radius: 15px; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; }
+    .nav-tabs { display: flex; background: white; border-bottom: 1px solid #ddd; overflow-x: auto; }
+    .nav-tab { padding: 14px 24px; border: none; background: none; cursor: pointer; font-size: 0.95rem; color: #666; border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap; }
+    .nav-tab.active { color: #667eea; border-bottom-color: #667eea; font-weight: 600; }
+    .main-content { padding: 20px; max-width: 1400px; margin: 0 auto; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .btn { padding: 10px 18px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+    .btn-secondary { background: #e0e0e0; color: #333; }
+    .btn-danger { background: #e74c3c; color: white; }
+    .btn-success { background: #27ae60; color: white; }
+    .btn-xs { padding: 4px 8px; font-size: 0.75rem; }
+    .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
+    .filter-section { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 15px; }
+    .tree-node-content { display: flex; align-items: flex-start; gap: 10px; padding: 12px 15px; background: #fafafa; border-radius: 10px; border-left: 4px solid #667eea; transition: all 0.2s; margin-bottom: 5px; }
+    .tree-node-content.focused { background: #fff5e6; border-left-color: #f5576c; }
+    .tree-children { margin-left: 30px; border-left: 2px dashed #ddd; padding-left: 15px; }
+    .tree-children.collapsed { display: none; }
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+    .modal-overlay.active { display: flex; }
+    .modal { background: white; border-radius: 16px; width: 100%; max-width: 550px; max-height: 90vh; overflow-y: auto; padding: 20px; }
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; margin-bottom: 5px; font-weight: 500; }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; }
+    .tag-selector { border: 1px solid #ddd; padding: 10px; border-radius: 8px; max-height: 150px; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 5px; }
+    .tag-option { padding: 4px 10px; border-radius: 12px; cursor: pointer; border: 2px solid transparent; font-size: 0.8rem; }
+    .tag-option.selected { border-color: #333; }
+    .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; color: white; z-index: 2000; }
+    .toast.success { background: #27ae60; }
+    .toast.error { background: #e74c3c; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🎯 Task Finder</h1>
+  <div class="header-actions">
+    <button class="btn btn-primary" onclick="openTaskModal()">+ New Task</button>
+    <button class="btn btn-secondary" onclick="openTagModal()">+ New Tag</button>
+  </div>
+</div>
+
+<div class="focus-banner" id="focusBanner">
+  <span>🎯 <strong>Focus:</strong></span>
+  <div class="focus-tags" id="focusTags"></div>
+</div>
+
+<div class="nav-tabs">
+  <button class="nav-tab active" onclick="switchTab('tasks')">📋 Tasks</button>
+  <button class="nav-tab" onclick="switchTab('tags')">🏷️ Tags</button>
+</div>
+
+<div class="main-content">
+  <div id="tasks-tab" class="tab-content active">
+    <div class="card">
+      <div class="filter-section" id="filterSection"></div>
+      <div class="tree-container" id="treeContainer"></div>
+    </div>
+  </div>
+
+  <div id="tags-tab" class="tab-content">
+    <div class="card" id="tagsContainer"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="taskModal">
+  <div class="modal">
+    <h2 id="taskModalTitle" style="margin-bottom:15px;">New Task</h2>
+    <input type="hidden" id="taskId">
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" id="taskName">
+    </div>
+    <div class="form-group">
+      <label>Parent Task</label>
+      <select id="taskParent"></select>
+    </div>
+    <div class="form-group">
+      <label>Status</label>
+      <select id="taskStatus">
+        <option value="not_started">Not Started</option>
+        <option value="in_progress">In Progress</option>
+        <option value="done">Done</option>
+        <option value="blocked">Blocked</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Tags</label>
+      <div class="tag-selector" id="taskTagSelector"></div>
+    </div>
+    <div style="display:flex; justify-content: flex-end; gap:10px;">
+      <button class="btn btn-secondary" onclick="closeModal('taskModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTask()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal" style="max-width:400px;">
+    <h2>Confirm Delete</h2>
+    <p id="deleteMessage" style="margin: 15px 0;">Are you sure?</p>
+    <div style="display:flex; justify-content: flex-end; gap:10px;">
+      <button class="btn btn-secondary" onclick="closeModal('deleteModal')">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDelete()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://wylxvmkcrexwfpjpbhyy.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind5bHh2bWtjcmV4d2ZwanBiaHl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg2MzkxMDYsImV4cCI6MjA4NDIxNTEwNn0.6Bxo42hx4jwlJGWnfjiTpiDUsYfc1QLTN3YtrU1efak';
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let allTasks = [], allTags = [], taskTagsMap = {}, selectedTagIds = new Set(), deleteTarget = null;
+
+async function init() {
+  const [tags, tasks, taskTags] = await Promise.all([
+    db.from('tags').select('*').order('name'),
+    db.from('tasks').select('*').order('created_at'),
+    db.from('task_tags').select('*')
+  ]);
+  
+  allTags = tags.data || [];
+  allTasks = tasks.data || [];
+  taskTagsMap = {};
+  (taskTags.data || []).forEach(tt => {
+    if (!taskTagsMap[tt.task_id]) taskTagsMap[tt.task_id] = [];
+    taskTagsMap[tt.task_id].push(tt.tag_id);
+  });
+
+  renderTree();
+  renderTagsGrid();
+  updateFocusBanner();
+}
+
+function switchTab(tabId) {
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById(`${tabId}-tab`).classList.add('active');
+}
+
+function renderTree() {
+  const container = document.getElementById('treeContainer');
+  const taskMap = {};
+  allTasks.forEach(t => taskMap[t.id] = { ...t, children: [] });
+  const roots = [];
+  allTasks.forEach(t => {
+    if (t.parent_id && taskMap[t.parent_id]) taskMap[t.parent_id].children.push(taskMap[t.id]);
+    else if (!t.parent_id) roots.push(taskMap[t.id]);
+  });
+  container.innerHTML = roots.map(node => renderNode(node)).join('');
+}
+
+function renderNode(node) {
+  const tags = (taskTagsMap[node.id] || []).map(tid => allTags.find(t => t.id === tid)).filter(Boolean);
+  return `
+    <div class="tree-node">
+      <div class="tree-node-content">
+        <div style="flex:1">
+          <strong>${node.name}</strong> 
+          <span style="font-size:0.7rem; opacity:0.6">[${node.status}]</span>
+          <div style="display:flex; gap:4px; margin-top:4px;">
+            ${tags.map(t => `<span style="background:${t.color}22; color:${t.color}; padding:2px 6px; border-radius:10px; font-size:0.7rem;">${t.name}</span>`).join('')}
+          </div>
+        </div>
+        <div>
+          <button class="btn btn-xs btn-secondary" onclick="openTaskModal('${node.id}')">✏️</button>
+          <button class="btn btn-xs btn-danger" onclick="deleteTask('${node.id}')">🗑️</button>
+        </div>
+      </div>
+      <div class="tree-children">${node.children.map(c => renderNode(c)).join('')}</div>
+    </div>`;
+}
+
+async function openTaskModal(id = null) {
+  selectedTagIds.clear();
+  const select = document.getElementById('taskParent');
+  select.innerHTML = '<option value="">None</option>' + allTasks.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  
+  if (id) {
+    const task = allTasks.find(t => t.id === id);
+    document.getElementById('taskId').value = task.id;
+    document.getElementById('taskName').value = task.name;
+    document.getElementById('taskParent').value = task.parent_id || '';
+    document.getElementById('taskStatus').value = task.status;
+    (taskTagsMap[id] || []).forEach(tid => selectedTagIds.add(tid));
+  } else {
+    document.getElementById('taskId').value = '';
+    document.getElementById('taskName').value = '';
+  }
+  renderTaskTagSelector();
+  document.getElementById('taskModal').classList.add('active');
+}
+
+function renderTaskTagSelector() {
+  document.getElementById('taskTagSelector').innerHTML = allTags.map(t => `
+    <span class="tag-option ${selectedTagIds.has(t.id) ? 'selected' : ''}" 
+          style="background:${t.color}22; color:${t.color}" 
+          onclick="toggleSelectedTag('${t.id}')">${t.name}</span>
+  `).join('');
+}
+
+function toggleSelectedTag(id) {
+  if (selectedTagIds.has(id)) selectedTagIds.delete(id); else selectedTagIds.add(id);
+  renderTaskTagSelector();
+}
+
+async function saveTask() {
+  const id = document.getElementById('taskId').value;
+  const payload = {
+    name: document.getElementById('taskName').value,
+    parent_id: document.getElementById('taskParent').value || null,
+    status: document.getElementById('taskStatus').value
+  };
+
+  const { data, error } = id ? await db.from('tasks').update(payload).eq('id', id).select() : await db.from('tasks').insert([payload]).select();
+  if (error) return showToast(error.message, 'error');
+
+  const taskId = data[0].id;
+  await db.from('task_tags').delete().eq('task_id', taskId);
+  const tagPayload = Array.from(selectedTagIds).map(tid => ({ task_id: taskId, tag_id: tid }));
+  if (tagPayload.length) await db.from('task_tags').insert(tagPayload);
+
+  closeModal('taskModal');
+  init();
+  showToast('Task saved');
+}
+
+function deleteTask(id) {
+  deleteTarget = id;
+  document.getElementById('deleteModal').classList.add('active');
+}
+
+async function confirmDelete() {
+  await db.from('tasks').delete().eq('id', deleteTarget);
+  closeModal('deleteModal');
+  init();
+  showToast('Deleted');
+}
+
+function renderTagsGrid() {
+  document.getElementById('tagsContainer').innerHTML = `<h3>🏷️ Tags</h3><div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:15px;">` + 
+    allTags.map(t => `<div class="tag-option" style="background:${t.color}; color:white">${t.name}</div>`).join('') + `</div>`;
+}
+
+function updateFocusBanner() {
+  const focused = allTags.filter(t => t.is_focused);
+  const banner = document.getElementById('focusBanner');
+  banner.style.display = focused.length ? 'flex' : 'none';
+  document.getElementById('focusTags').innerHTML = focused.map(t => `<span class="focus-tag">${t.name}</span>`).join('');
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+function showToast(m, t='success') {
+  const toast = document.createElement('div'); toast.className=`toast ${t}`; toast.innerText=m;
+  document.body.appendChild(toast); setTimeout(()=>toast.remove(), 2000);
+}
+
+window.onload = init;
+</script>
+</body>
+</html>
